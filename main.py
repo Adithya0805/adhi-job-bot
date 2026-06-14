@@ -17,7 +17,7 @@ def search_jobs(query):
         "query": query,
         "page": "1",
         "num_results": "10",
-        "date_posted": "today"
+        "date_posted": "3days"
     }
     r = requests.get(url, headers=headers, params=params, timeout=15)
     data = r.json()
@@ -38,11 +38,17 @@ async def notify(msg):
 
 async def main():
     queries = [
-        "ML Engineer fresher India",
-        "Data Science trainee Chennai Bengaluru",
-        "SDE trainee AI India",
-        "AI Engineer fresher India"
-    ]
+    "AI Engineer fresher Tamil Nadu",
+    "Machine Learning Engineer fresher Chennai",
+    "Data Scientist fresher Coimbatore",
+    "Data Analyst fresher Tamil Nadu",
+    "Python Developer AI fresher Chennai",
+    "NLP Engineer fresher Tamil Nadu",
+    "Deep Learning Engineer fresher Chennai",
+    "Business Intelligence fresher Tamil Nadu",
+    "Computer Vision Engineer fresher Chennai",
+    "Data Science trainee Tamil Nadu"
+]
 
     all_jobs = []
     for q in queries:
