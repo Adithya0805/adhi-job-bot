@@ -1,14 +1,11 @@
 import requests
-import telegram
-import time, os
+import asyncio
+import os
+from telegram import Bot
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT_ID   = os.environ["TELEGRAM_CHAT_ID"]
 RAPIDAPI_KEY = os.environ["RAPIDAPI_KEY"]
-
-def notify(msg):
-    bot = telegram.Bot(token=BOT_TOKEN)
-    bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="HTML")
 
 def search_jobs(query):
     url = "https://jsearch.p.rapidapi.com/search"
@@ -35,7 +32,11 @@ def search_jobs(query):
         })
     return jobs
 
-def main():
+async def notify(msg):
+    bot = Bot(token=BOT_TOKEN)
+    await bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="HTML")
+
+async def main():
     queries = [
         "ML Engineer fresher India",
         "Data Science trainee Chennai Bengaluru",
@@ -47,13 +48,12 @@ def main():
     for q in queries:
         jobs = search_jobs(q)
         all_jobs += jobs
-        time.sleep(1)
 
     if not all_jobs:
-        notify("⚠️ Bot ran — no jobs found today.")
+        await notify("⚠️ Bot ran — no jobs found today.")
         return
 
-    msg = f"🔥 <b>Adhi Job Bot — {len(all_jobs)} jobs!</b>\n\n"
+    msg = f"🔥 <b>Adhi Job Bot — {len(all_jobs)} jobs found!</b>\n\n"
     for j in all_jobs[:15]:
         msg += f"▸ <b>{j['title']}</b> @ {j['company']}\n"
         msg += f"📍 {j['location']} | {j['platform']}\n"
@@ -61,8 +61,8 @@ def main():
             msg += f"🔗 {j['link'][:70]}\n"
         msg += "\n"
 
-    notify(msg)
+    await notify(msg)
     print(f"Done. Sent {len(all_jobs)} jobs.")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
