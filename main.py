@@ -147,27 +147,43 @@ def get_location_score(location):
         return 7
     return 5
 
-async def analyze_with_gemini(title, company, location):
-    """Use Gemini to intelligently score each job against Adhi's profile"""
+async def analyze_all_jobs(jobs):
+    """Single Gemini call for all jobs — saves quota"""
+    if not jobs:
+        return []
+        
+    jobs_text = ""
+    for i, j in enumerate(jobs, 1):
+        jobs_text += f"{i}. Title: {j['title']} | Company: {j['company']} | Location: {j['location']}\n"
+
     prompt = f"""
-You are a senior AI career advisor analyzing a job opportunity for this candidate:
+You are a senior AI career advisor for this candidate:
 
-{ADHI_PROFILE}
+Name: Adithya (Adhi)
+Degree: B.Tech AI & Data Science — 2025 Fresher
+Skills: Python, LangChain, LangGraph, FastAPI, AWS Bedrock, Pinecone RAG, Next.js, Supabase
+Projects: MediGuard V2 (multi-agent clinical AI), TownRise AI (real estate platform)
+Target: AI Engineer / ML Engineer / GenAI Developer / Python Developer
+Experience: Fresher / 0-2 years only
+Location Priority: Tamil Nadu > Remote India > Bangalore > Hyderabad
+Company Preference: AI startups and product companies over IT service body shops
 
-Job Details:
-- Title: {title}
-- Company: {company}
-- Location: {location}
+Here are {len(jobs)} job listings:
+{jobs_text}
 
-Analyze this job and return ONLY a JSON object with no extra text:
-{{
-  "skill_match": <0-10>,
-  "role_growth": <0-10>,
-  "accessibility": <0-10>,
-  "company_quality": <0-10>,
-  "is_relevant": <true/false>,
-  "reason": "<one sharp sentence why this fits or doesnt fit Adhi>"
-}}
+Analyze each job and return ONLY a JSON array with no extra text:
+[
+  {{
+    "index": 1,
+    "skill_match": <0-10>,
+    "role_growth": <0-10>,
+    "accessibility": <0-10>,
+    "is_relevant": <true/false>,
+    "reason": "<one sharp sentence why this fits or not>"
+  }},
+  ...
+]
+Return analysis for ALL {len(jobs)} jobs in order.
 
 CRITICAL RULES:
 - Never recommend internships paying under ₹15,000/month (if it seems to be an unpaid or low-paying internship, set "is_relevant" to false).
@@ -183,17 +199,22 @@ CRITICAL RULES:
         text = response.text.strip()
         if text.startswith("```"):
             text = text.replace("```json", "").replace("```", "").strip()
-        return json.loads(text)
+        results = json.loads(text)
+        return results
     except Exception as e:
-        logger.error(f"Gemini error: {e}")
-        return {
-            "skill_match": 5,
-            "role_growth": 5,
-            "accessibility": 5,
-            "company_quality": 5,
-            "is_relevant": True,
-            "reason": "Could not analyze — manual review needed"
-        }
+        logger.error(f"Gemini batch error: {e}")
+        # Fallback — return default scores for all jobs
+        return [
+            {
+                "index": i+1,
+                "skill_match": 5,
+                "role_growth": 5,
+                "accessibility": 5,
+                "is_relevant": True,
+                "reason": "Could not analyze — manual review needed"
+            }
+            for i in range(len(jobs))
+        ]
 
 def calculate_final_score(gemini_result, location, company):
     loc_score     = get_location_score(location)
@@ -335,20 +356,18 @@ async def main():
         # Limit Gemini analysis to top 30 raw jobs to avoid hitting rate limits or taking too long
         raw_jobs = raw_jobs[:30]
 
-        # ── Gemini AI Analysis ─────────────────────────────────
+        # ── Single Gemini call for ALL jobs ───────────────────
+        logger.info(f"Found {len(raw_jobs)} new raw jobs. Running single Gemini analysis...")
+        gemini_results = await analyze_all_jobs(raw_jobs)
+
         analyzed_jobs = []
-        
-        # IT Body Shops to filter
         IT_BODY_SHOPS = ["tcs", "tata consultancy", "wipro", "infosys", "cognizant", "accenture", "capgemini", "hcl", "tech mahindra", "l&t", "ltimindtree"]
 
-        for j in raw_jobs:
-            analysis = await analyze_with_gemini(j["title"], j["company"], j["location"])
-            
-            # Layer 2 check: Check if relevancy flag is false
-            if not analysis.get("is_relevant", False):
+        for j, result in zip(raw_jobs, gemini_results):
+            if not result.get("is_relevant", False):
                 continue
             
-            skill_match = analysis.get("skill_match", 0)
+            skill_match = result.get("skill_match", 0)
             
             # Rule: Never show IT body shop roles unless skill match above 8
             company_lower = j["company"].lower()
@@ -356,8 +375,8 @@ async def main():
             if is_body_shop and skill_match <= 8:
                 continue
 
-            j["analysis"]    = analysis
-            j["final_score"] = calculate_final_score(analysis, j["location"], j["company"])
+            j["analysis"]    = result
+            j["final_score"] = calculate_final_score(result, j["location"], j["company"])
             j["tier"]        = get_company_tier(j["company"])
             
             # Rule: Only pass jobs scoring above 5.0 to Telegram
@@ -365,9 +384,6 @@ async def main():
                 continue
                 
             analyzed_jobs.append(j)
-            
-            # Sleep 4.2s to comply with Gemini API free tier rate limit (15 RPM)
-            await asyncio.sleep(4.2)
 
         # If no jobs match our criteria
         if not analyzed_jobs:
