@@ -3,7 +3,8 @@ import asyncio
 import os
 import json
 import hashlib
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from telegram import Bot
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -29,8 +30,7 @@ if not BOT_TOKEN or not CHAT_ID or not GEMINI_KEY:
     logger.error("Missing required environment variables. Ensure TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, and GEMINI_API_KEY are set.")
     sys.exit(1)
 
-genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(api_key=GEMINI_KEY)
 
 # ── ADHI'S PROFILE ─────────────────────────────────────────
 ADHI_PROFILE = """
@@ -161,11 +161,11 @@ Job Details:
 
 Analyze this job and return ONLY a JSON object with no extra text:
 {{
-  "skill_match": <0-10, how well candidate skills match this role>,
-  "role_growth": <0-10, growth potential for AI career>,
-  "accessibility": <0-10, realistic chance for fresher to get this>,
-  "company_quality": <0-10, company reputation and culture>,
-  "is_relevant": <true/false, is this genuinely relevant for candidate>,
+  "skill_match": <0-10>,
+  "role_growth": <0-10>,
+  "accessibility": <0-10>,
+  "company_quality": <0-10>,
+  "is_relevant": <true/false>,
   "reason": "<one sharp sentence why this fits or doesnt fit Adhi>"
 }}
 
@@ -175,9 +175,10 @@ CRITICAL RULES:
 - Ensure "is_relevant" is true ONLY if the job is a good fit for a fresher AI/ML Engineer or Python Developer in India.
 """
     try:
-        response = model.generate_content(
-            prompt,
-            generation_config={"response_mime_type": "application/json"}
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json")
         )
         text = response.text.strip()
         if text.startswith("```"):
